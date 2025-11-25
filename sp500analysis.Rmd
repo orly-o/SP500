@@ -1,0 +1,333 @@
+---
+title: "S&P 500 Top 10 by Decade"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+
+This report looks at the top 10 S&P 500 companies by decade from 1960 - 2020. 
+
+```{r setup, include = FALSE}
+library(readxl)
+library(dplyr)
+library(plotly)
+```
+
+```{r data load, include = FALSE}
+setwd('/Users/orly/Desktop')
+sp = read_xlsx(path = 'SP500TOP10.xlsx', sheet = 'Main')
+head(sp)
+```
+
+The four columns in the dataset are:  
+Decade: from 1960 - 2020, inclusive  
+Rank: from 1 to 10 within each decade  
+Company: company name  
+Type: industry or category of company  
+
+Let's take a look.
+
+```{r}
+# show easier setup
+# different tab in the excel sheet
+sp_spread = read_xlsx(path = 'SP500TOP10.xlsx', sheet = 'Main2')
+sp_spread
+```
+
+I asked Gemini to label each company by industry so I an analyze the category associated and see how many of each industry is present in the top 10 across the decades in this dataset. I then consolidated the original 29 categories.  
+
+First, some summary stats.  
+
+### Company  
+
+How often is a company present in this dataset (i.e., over how many decades of the 7?)?
+
+```{r}
+# count company appearance
+company_counts = sp %>%
+  count(Company) %>%
+  arrange(desc(n)) %>%
+  rename(Count = n) %>%
+  as.data.frame()
+company_counts
+
+# frequency tables of counts
+company_counts_freq = company_counts %>%
+  count(Count) %>%
+  # arrange(asc(Count)) %>%
+  as.data.frame()
+company_counts_freq
+```
+
+Let's graph it!
+
+```{r, out.height = '100%', out.width = '100%'}
+company_counts_freq_plot = plot_ly(
+  data = company_counts_freq,
+  x = ~Count,
+  y = ~n,
+  type = 'bar') %>%
+  layout(
+    title = 'Frequency of Company Appearances in the S&P 500 Top 10',
+    xaxis = list(
+      title = 'Appearances'
+    ),
+    yaxis = list(
+      'Frequency'
+    )
+  )
+company_counts_freq_plot
+```
+
+What is the high, low, and average rank of each company?
+
+```{r}
+company_stats = sp %>%
+  group_by(Company) %>%
+  summarise(
+    Avg_Rank = round(mean(Rank), 1),
+    Min_Rank = min(Rank),
+    Max_Rank = max(Rank)
+  ) %>%
+  as.data.frame()
+company_stats
+```
+
+Plot it!
+
+```{r, warning = FALSE, out.height = '100%', out.width = '100%'}
+# rearrange the data so i can draw vertical lines to show the min to max ranks
+company_stats_lines = company_stats %>%
+  select(Company, Min_Rank, Max_Rank) %>%
+  tidyr::pivot_longer(
+    cols = c(Min_Rank, Max_Rank),
+    names_to = "rank_type",
+    values_to = "rank_value"
+  ) %>%
+  arrange(Company, rank_value)
+
+# now draw the graph
+company_stats_plot = plot_ly() %>%
+  # vertical range line (Min to Max)
+  add_trace(
+    data = company_stats_lines,
+    x = ~Company,
+    y = ~rank_value,
+    # This groups by company and draws a line for each group
+    color = ~Company,
+    type = 'scatter',
+    mode = 'lines',
+    line = list(width = 2),
+    showlegend = FALSE,
+    name = 'Rank Spread'
+  ) %>%
+  # add the Average Rank marker
+  add_trace(
+    data = company_stats,
+    x = ~Company,
+    y = ~Avg_Rank,
+    type = 'scatter',
+    mode = 'markers',
+    marker = list(
+      size = 10,
+      color = 'black',
+      line = list(color = 'white', width = 1)
+    ),
+    showlegend = TRUE,
+    name = 'Average Rank'
+  ) %>%
+  layout(
+    title = 'Rank Spread by Company (Min-Avg-Max)',
+    xaxis = list(
+      title = 'Company'
+    ),
+    # Typically, a lower rank is better, so we reverse the Y-axis
+    yaxis = list(
+      title = 'Rank', 
+      autorange = 'reversed'
+    )
+  )
+company_stats_plot
+```
+
+```{r, include = FALSE}
+# company_stats_plot2 = plot_ly(
+#   data = company_stats
+# ) %>%
+#   add_trace(
+#     x = ~Company,
+#     y = ~Min_Rank,
+#     name = 'Min Rank',
+#     type = 'scatter',
+#     mode = 'markers_lines'
+#   ) %>%
+#   add_trace(
+#     x = ~Company,
+#     y = ~Avg_Rank,
+#     name = 'Avg Rank',
+#     type = 'scatter',
+#     mode = 'markers_lines'
+#   ) %>%
+#   add_trace(
+#     x = ~Company,
+#     y = ~Max_Rank,
+#     name = 'Max Rank',
+#     type = 'scatter',
+#     mode = 'markers_lines'
+#   ) %>%
+#   layout(
+#     title = 'Avg, Min, and Max Ranks for Each Company',
+#     xaxis = list(
+#       title = 'Company'
+#     ),
+#     yaxis = list(
+#       title = 'Rank'
+#     )
+#   )
+# 
+# company_stats_plot2
+```
+
+Try looking further into the graph - take out any company that only appears once.
+
+```{r, warning = FALSE, out.height = '100%', out.width = '100%'}
+# update dplyr to keep only companies that appear more than once
+company_stats_mto = sp %>%
+  group_by(Company) %>%
+  filter(n() > 1) %>%
+  summarise(
+    Avg_Rank = round(mean(Rank), 1),
+    Min_Rank = min(Rank),
+    Max_Rank = max(Rank)
+  ) %>%
+  as.data.frame()
+
+# company_stats_mto
+
+# plot it
+company_stats_lines_mto = company_stats_mto %>%
+  select(Company, Min_Rank, Max_Rank) %>%
+  tidyr::pivot_longer(
+    cols = c(Min_Rank, Max_Rank),
+    names_to = "rank_type",
+    values_to = "rank_value"
+  ) %>%
+  arrange(Company, rank_value)
+
+# now draw the graph
+company_stats_mto_plot = plot_ly() %>%
+  # vertical range line (Min to Max)
+  add_trace(
+    data = company_stats_lines_mto,
+    x = ~Company,
+    y = ~rank_value,
+    # This groups by company and draws a line for each group
+    color = ~Company,
+    type = 'scatter',
+    mode = 'lines',
+    line = list(width = 2),
+    showlegend = FALSE,
+    name = 'Rank Spread'
+  ) %>%
+  # add the Average Rank marker
+  add_trace(
+    data = company_stats_mto,
+    x = ~Company,
+    y = ~Avg_Rank,
+    type = 'scatter',
+    mode = 'markers',
+    marker = list(
+      size = 10,
+      color = 'black',
+      line = list(color = 'white', width = 1)
+    ),
+    showlegend = TRUE,
+    name = 'Average Rank'
+  ) %>%
+  layout(
+    title = 'Rank Spread by Company (Min-Avg-Max); Companies that Appear > 1',
+    xaxis = list(title = 'Company'),
+    # Typically, a lower rank is better, so we reverse the Y-axis
+    yaxis = list(title = 'Rank', autorange = 'reversed')
+  )
+company_stats_mto_plot
+```
+
+Just a tad easier to see! There is an instance of the dot having no line, for Chrysler. In both appearances, Chrysler was ranked 6th (1960 and 1970).
+
+### Type/Industry  
+
+How many unique industries are in the dataset, and what are they?  
+I asked Gemini to label each of the companies in the dataset, and I adjusted and compiled which resulted in the following:
+
+```{r}
+industries = unique(sp$Type)
+industries
+```
+
+There are 18 unique industry types that have been in the top 10 of the S&P 500 from 1960-2020
+
+How many unique industries are in each decade?
+
+```{r}
+industries_decade = sp %>%
+  group_by(Decade, Type) %>%
+  count()
+industries_decade
+```
+
+I want to plot this - each line is an industry, where the x axis is the year and the y axis is number of times it's present in the top 10 for that decade. Let's see what we can do.
+
+```{r, warning = FALSE, out.height = '100%', out.width = '100%'}
+industries_decade_plot = plot_ly(
+  data = industries_decade,
+  x = ~Decade,
+  y = ~n,
+  color = ~Type,
+  type = 'bar'
+) %>%
+  layout(
+    title = 'Industries in the Top 10 by Decade',
+    barmode = 'stack',
+    xaxis = list(
+      title = 'Decade',
+      type = 'category'
+    ),
+    yaxis = list(
+      title = 'Count',
+      range = c(0, 10)
+    )
+  )
+industries_decade_plot
+```
+
+You can see that Energy increased from 1960 to 1980 and then decreased, with no companies in the 2020s. Keeping in mind the 2020s are not over...  
+
+Which industries are most common for each decade?
+
+```{r}
+# pull the max from each decade from the dataset above
+industries_decade_max = industries_decade %>%
+  group_by(Decade) %>%
+  slice_max(
+    order_by = n,
+    n = 1,
+    with_ties = TRUE
+  ) %>%
+  ungroup()
+industries_decade_max
+```
+
+Energy had the most companies in the Top 10 from 1960 to 1990, tying Pharma in 1990. Pharma tied Technology in 2000, and Technology took over with the most companies in the Top 10 for 2010 and 2020.  
+
+
+
+
+
+
+
+
+
+
